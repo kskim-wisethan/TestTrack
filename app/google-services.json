@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "669437964382",
+    "firebase_url": "https://my-wisethan-project.firebaseio.com",
+    "project_id": "my-wisethan-project",
+    "storage_bucket": "my-wisethan-project.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:669437964382:android:360a758c36e04f46",
+        "android_client_info": {
+          "package_name": "com.wisethan.testtrack"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "669437964382-991ve210a7i86vr97ktf0ou3sf3nkcdr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wisethan.testtrack",
+            "certificate_hash": "ed5b9e072d0561b8d10bca3dca259a1556cbaea7"
+          }
+        },
+        {
+          "client_id": "669437964382-quv1dum795svqoa99u7lq2fkjmrr5tvd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBL7Hko3ybT2vxOVKJxG4pjrFNE-WdpGcM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "669437964382-quv1dum795svqoa99u7lq2fkjmrr5tvd.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
