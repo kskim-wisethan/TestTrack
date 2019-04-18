@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.res.AssetManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -22,6 +25,9 @@ import com.google.android.material.navigation.NavigationView;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.wisethan.testtrack.activity.LoginActivity;
+import com.wisethan.testtrack.activity.ProfileActivity;
+import com.wisethan.testtrack.model.StorageFileModel;
+import com.wisethan.testtrack.model.UserModel;
 import com.wisethan.testtrack.util.PermissionManager;
 import com.wisethan.testtrack.util.RequestManager;
 
@@ -34,21 +40,33 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.CompoundButton;
 import android.widget.ImageView;
+import android.widget.Switch;
 import android.widget.TextView;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 
 public class MainActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
     private static final String TAG = MainActivity.class.getSimpleName();
 
+    long mStartTime = 0;
+    long mEndTime = 0;
+
     private ImageView mProfileImage;
     private TextView mProfileName;
     private TextView mProfileEmail;
+    private TextView mMainLog;
+    private TextView mSubLog;
+    private Switch mTrackingSwitch;
 
     private RequestManager mRequestManager;
     private SensorManager mSensorManager;
+    private Sensor mSensor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,8 +104,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         mProfileImage.setOnClickListener(new ProfileImageClick());
         mProfileName = (TextView) header.findViewById(R.id.nav_profile_name);
         mProfileEmail = (TextView) header.findViewById(R.id.nav_profile_email);
+        mMainLog = findViewById(R.id.current_location);
+        mSubLog = findViewById(R.id.current_address);
 
         mSensorManager = (SensorManager)getSystemService(Context.SENSOR_SERVICE);
+        mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+
+        mTrackingSwitch = (Switch) findViewById(R.id.tracking_switch);
+        mTrackingSwitch.setOnCheckedChangeListener(new TrackingSwitchClick());
 
         updateProfile();
 
@@ -148,26 +172,17 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void goIdentifyingSensors() {
-       List<Sensor> deviceSensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
-
+        List<Sensor> deviceSensors = mSensorManager.getSensorList(Sensor.TYPE_ALL);
+        String output = "";
         for (int i = 0; i < deviceSensors.size(); i++) {
             Sensor sensor = deviceSensors.get(i);
 
             Log.d(TAG, deviceSensors.get(i).getName());
+            output += deviceSensors.get(i).getName() + "\n";
         }
+
+        mMainLog.setText(output);
     }
-
-    private final SensorEventListener mSensorEventListener = new SensorEventListener() {
-        @Override
-        public void onSensorChanged(SensorEvent event) {
-
-        }
-
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
-        }
-    };
 
     class ProfileImageClick implements View.OnClickListener {
         @Override
@@ -176,12 +191,73 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }
     }
 
+    class TrackingSwitchClick implements CompoundButton.OnCheckedChangeListener {
+        @Override
+        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            if (isChecked) {
+                startTracking();
+            } else {
+                stopTracking();
+            }
+        }
+    }
+
+    private void startTracking() {
+        mSensorManager.registerListener(mSensorEventListener, mSensor, SensorManager.SENSOR_DELAY_UI);
+        mStartTime = System.nanoTime();
+    }
+
+    private void stopTracking() {
+        mSensorManager.unregisterListener(mSensorEventListener);
+        mStartTime = 0;
+        mEndTime = 0;
+    }
+
+    private final SensorEventListener mSensorEventListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            // A sensor reports a new value
+            int type = event.sensor.getType();
+            if (type == Sensor.TYPE_ACCELEROMETER) {
+                mEndTime = System.nanoTime();
+                long elapsed_time = mEndTime - mStartTime;
+                float value[] = event.values;
+                String log  = "Acceleration\n";
+                log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
+                mMainLog.setText(log);
+
+                String log2 = String.format("elapsed time: %.0f ms", (double)(elapsed_time / 1000000));
+                mSubLog.setText(log2);
+                mStartTime = System.nanoTime();
+            }
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+            // A sensor's accuracy changes
+            int type = sensor.getType();
+            if (type == Sensor.TYPE_ACCELEROMETER) {
+
+            }
+        }
+    };
+
+
     private void profileImageClicked(View v) {
         if (checkLogin()) {
+            goProfile();
             closeDrawer();
         } else {
             goLogin();
             closeDrawer();
+        }
+    }
+
+    private void goProfile() {
+        Intent intent = new Intent(this, ProfileActivity.class);
+        if (intent.resolveActivity(getPackageManager()) != null) {
+            intent.putExtra("ParentClassSource", MainActivity.class.getName());
+            startActivity(intent);
         }
     }
 
@@ -227,6 +303,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
             mProfileName.setText((name == null || name.isEmpty()) ? uid : name);
             mProfileEmail.setText(email);
+            getUserProfileInfo(uid);
         } else {
             mProfileImage.setImageResource(R.mipmap.ic_launcher_round);
             mProfileName.setText(getString(R.string.nav_header_title));
@@ -239,4 +316,49 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         intentFilter.addAction(LoginActivity.BROADCAST_ACTION);
         return intentFilter;
     }
+
+    private void getUserProfileInfo(String userid) {
+        mRequestManager.requestGetUserInfo(userid, new RequestManager.UserCallback() {
+            @Override
+            public void onResponse(UserModel response) {
+                Log.d(TAG, "onResponse: UserInfo (" + response.getUserId() + ", " + response.getName() + ", " + response.getImageUrl() + ")");
+
+                String username = response.getName();
+                mProfileName.setText(username);
+
+                String imagename = "profile";
+                String imageurl = response.getImageUrl();
+                if (imageurl != null && !imageurl.isEmpty()) {
+                    String imagesuffix = imageurl.substring(imageurl.indexOf('.'), imageurl.length());
+                    mRequestManager.requestDownloadFileFromStorage(imagename, imageurl, imagesuffix, new RequestManager.StorageFileCallback() {
+                        @Override
+                        public void onResponse(StorageFileModel download) {
+                            String imgurl = download.getPath();
+                            File imgFile = new File(imgurl);
+                            if (imgFile.exists()) {
+                                Bitmap myBitmap = BitmapFactory.decodeFile(imgFile.getAbsolutePath());
+                                if (myBitmap != null) {
+                                    mProfileImage.setImageBitmap(myBitmap);
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    try {
+                        AssetManager am = getResources().getAssets();
+                        InputStream is = null;
+                        is = am.open("lake.png");
+                        if (is != null) {
+                            Bitmap bm = BitmapFactory.decodeStream(is);
+                            mProfileImage.setImageBitmap(bm);
+                            is.close();
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        });
+    }
+
 }
