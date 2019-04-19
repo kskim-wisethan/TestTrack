@@ -157,4 +157,8 @@
         "when a user tries to pick up one of cards.\n\n"
     </string>
     <string name="Hello">Hey, buddy.</string>
+    <string name="service_not_available">The background geocoding service is not available due to a network error or IO exception.</string>
+    <string name="invalid_lat_long_used">The latitude and/or longitude values that are provided in the Location object are invalid.</string>
+    <string name="no_address_found">The geocoder cannot find an address for the given latitude/longitude.</string>
+    <string name="address_found">The geocoder found an address.</string>
 </resources>

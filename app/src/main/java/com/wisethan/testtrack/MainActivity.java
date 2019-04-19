@@ -11,13 +11,23 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.hardware.TriggerEvent;
+import android.hardware.TriggerEventListener;
+import android.location.Location;
+import android.location.LocationManager;
 import android.os.Bundle;
 
 import com.facebook.FacebookSdk;
 import com.facebook.appevents.AppEventsLogger;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.GeofencingClient;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
 
+import android.os.Handler;
+import android.os.ResultReceiver;
 import android.util.Log;
 import android.view.View;
 
@@ -28,6 +38,7 @@ import com.wisethan.testtrack.activity.LoginActivity;
 import com.wisethan.testtrack.activity.ProfileActivity;
 import com.wisethan.testtrack.model.StorageFileModel;
 import com.wisethan.testtrack.model.UserModel;
+import com.wisethan.testtrack.service.FetchAddressIntentService;
 import com.wisethan.testtrack.util.PermissionManager;
 import com.wisethan.testtrack.util.RequestManager;
 
@@ -56,17 +67,37 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
     long mStartTime = 0;
     long mEndTime = 0;
+    long mStepCount = 0;
+    Location mLastLocation;
 
     private ImageView mProfileImage;
     private TextView mProfileName;
     private TextView mProfileEmail;
-    private TextView mMainLog;
+    private TextView mAccelerationLog;
+    private TextView mLinearAccelerationLog;
+    private TextView mGravityLog;
+    private TextView mGyroscopeLog;
+    private TextView mRotationVectorLog;
+    private TextView mSignificantMotionLog;
+    private TextView mStepDetectLog;
     private TextView mSubLog;
+    private TextView mLocationLog;
+    private TextView mAddressLog;
     private Switch mTrackingSwitch;
 
     private RequestManager mRequestManager;
     private SensorManager mSensorManager;
-    private Sensor mSensor;
+    private Sensor mAccelerometerSensor;
+    private Sensor mLinearAccelerometerSensor;
+    private Sensor mGravitySensor;
+    private Sensor mGyroscopeSensor;
+    private Sensor mRotationVectorSensor;
+    private Sensor mSignificantMotionSensor;
+    private Sensor mStepDetectorSensor;
+
+    private FusedLocationProviderClient mFusedLocationProviderClient;
+    private LocationManager mLocationManager;
+    private GeofencingClient mGeofencingClient;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,6 +113,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         AppEventsLogger.activateApp(this);
 
         mRequestManager = RequestManager.getInstance();
+        mFusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this);
+        mLocationManager = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
 
         FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(new View.OnClickListener() {
@@ -104,19 +137,32 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         mProfileImage.setOnClickListener(new ProfileImageClick());
         mProfileName = (TextView) header.findViewById(R.id.nav_profile_name);
         mProfileEmail = (TextView) header.findViewById(R.id.nav_profile_email);
-        mMainLog = findViewById(R.id.current_location);
-        mSubLog = findViewById(R.id.current_address);
+        mAccelerationLog = findViewById(R.id.current_acceleration);
+        mLinearAccelerationLog = findViewById(R.id.current_linear_acceleration);
+        mGravityLog = findViewById(R.id.current_gravity);
+        mGyroscopeLog = findViewById(R.id.current_gyroscope);
+        mRotationVectorLog = findViewById(R.id.current_rotational_vector);
+        mSignificantMotionLog = findViewById(R.id.current_significant_motion);
+        mStepDetectLog = findViewById(R.id.current_step_detect);
+        mSubLog = findViewById(R.id.sub_log);
+        mLocationLog = findViewById(R.id.current_location);
+        mAddressLog = findViewById(R.id.current_address);
 
         mSensorManager = (SensorManager)getSystemService(Context.SENSOR_SERVICE);
-        mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mAccelerometerSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mLinearAccelerometerSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
+        mGravitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_GRAVITY);
+        mGyroscopeSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        mRotationVectorSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+        mSignificantMotionSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION);
+        mStepDetectorSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR);
 
         mTrackingSwitch = (Switch) findViewById(R.id.tracking_switch);
         mTrackingSwitch.setOnCheckedChangeListener(new TrackingSwitchClick());
 
         updateProfile();
 
-        MyStateReceiver stateReceiver = new MyStateReceiver();
-        LocalBroadcastManager.getInstance(this).registerReceiver(stateReceiver, makeBroadcastIntentFilter());
+        LocalBroadcastManager.getInstance(this).registerReceiver(new MyStateReceiver(), makeBroadcastIntentFilter());
     }
 
     @Override
@@ -155,6 +201,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             goIdentifyingSensors();
 
         } else if (id == R.id.nav_gallery) {
+            getLastLocation();
 
         } else if (id == R.id.nav_slideshow) {
 
@@ -181,7 +228,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             output += deviceSensors.get(i).getName() + "\n";
         }
 
-        mMainLog.setText(output);
+        mAccelerationLog.setText(output);
     }
 
     class ProfileImageClick implements View.OnClickListener {
@@ -203,32 +250,74 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void startTracking() {
-        mSensorManager.registerListener(mSensorEventListener, mSensor, SensorManager.SENSOR_DELAY_UI);
-        mStartTime = System.nanoTime();
+        mSensorManager.registerListener(mSensorEventListener, mAccelerometerSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mLinearAccelerometerSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mGravitySensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mGyroscopeSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mRotationVectorSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mStepDetectorSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.requestTriggerSensor(mTriggerEventListener, mSignificantMotionSensor);
+        //mStartTime = System.nanoTime();
     }
 
     private void stopTracking() {
         mSensorManager.unregisterListener(mSensorEventListener);
         mStartTime = 0;
         mEndTime = 0;
+        mStepCount = 0;
     }
+
+    private final TriggerEventListener mTriggerEventListener = new TriggerEventListener() {
+        @Override
+        public void onTrigger(TriggerEvent event) {
+            float value[] = event.values;
+            String log = "Current Motion\n";
+            log += String.format("[%.0f]\n", value[0]);
+            mSignificantMotionLog.setText(log);
+        }
+    };
 
     private final SensorEventListener mSensorEventListener = new SensorEventListener() {
         @Override
         public void onSensorChanged(SensorEvent event) {
-            // A sensor reports a new value
             int type = event.sensor.getType();
             if (type == Sensor.TYPE_ACCELEROMETER) {
                 mEndTime = System.nanoTime();
                 long elapsed_time = mEndTime - mStartTime;
-                float value[] = event.values;
-                String log  = "Acceleration\n";
-                log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
-                mMainLog.setText(log);
-
                 String log2 = String.format("elapsed time: %.0f ms", (double)(elapsed_time / 1000000));
                 mSubLog.setText(log2);
                 mStartTime = System.nanoTime();
+
+                float value[] = event.values;
+                String log = "Acceleration force\n";
+                log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
+                mAccelerationLog.setText(log);
+            } else if (type == Sensor.TYPE_LINEAR_ACCELERATION) {
+                float value[] = event.values;
+                String log = "Linear Acceleration\n";
+                log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
+                mLinearAccelerationLog.setText(log);
+            } else if (type == Sensor.TYPE_GRAVITY) {
+                float value[] = event.values;
+                String log = "Gravity \n";
+                log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
+                mGravityLog.setText(log);
+            } else if (type == Sensor.TYPE_GYROSCOPE) {
+                float value[] = event.values;
+                String log = "Gyroscope \n";
+                log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
+                mGyroscopeLog.setText(log);
+            } else if (type == Sensor.TYPE_ROTATION_VECTOR) {
+                float value[] = event.values;
+                String log = "Rotation Vector \n";
+                log += String.format("[%f, %f, %f, %f]\n", value[0], value[1], value[2], value[3]);
+                mRotationVectorLog.setText(log);
+            } else if (type == Sensor.TYPE_STEP_DETECTOR) {
+                float value[] = event.values;
+                ++mStepCount;
+                String log = "Step Detector \n";
+                log += String.format("[%.0f][%d]\n", value[0], mStepCount);
+                mStepDetectLog.setText(log);
             }
         }
 
@@ -361,4 +450,50 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         });
     }
 
+    private void getLastLocation() {
+        try {
+            mFusedLocationProviderClient.getLastLocation()
+                    .addOnSuccessListener(this, new OnSuccessListener<Location>() {
+                        @Override
+                        public void onSuccess(Location location) {
+                            if (location != null) {
+                                mLastLocation = location;
+
+                                double latitude = location.getLatitude();
+                                double longitude = location.getLongitude();
+                                float speed = location.getSpeed();
+
+                                String log = "Last Location\n[" + latitude + ", " + longitude + ", " + speed + " m/s" + "\n";
+                                mLocationLog.setText(log);
+
+                                startFetchAddressIntentService();
+                            }
+                        }
+                    });
+
+        } catch (SecurityException e) {
+            e.printStackTrace();
+        }
+    }
+
+    class AddressResultReceiver extends ResultReceiver {
+        public AddressResultReceiver(Handler handler) {
+            super(handler);
+        }
+        @Override
+        protected void onReceiveResult(int resultCode, Bundle resultData) {
+            if (resultData == null) {
+                return;
+            }
+            String result = resultData.getString(FetchAddressIntentService.RESULT_DATA_KEY);
+            mAddressLog.setText(result);
+        }
+    }
+
+    private void startFetchAddressIntentService() {
+        Intent intent = new Intent(this, FetchAddressIntentService.class);
+        intent.putExtra(FetchAddressIntentService.EXTRA_RECEIVER, new AddressResultReceiver(new Handler()));
+        intent.putExtra(FetchAddressIntentService.EXTRA_DATA_LOCATION, mLastLocation);
+        startService(intent);
+    }
 }
