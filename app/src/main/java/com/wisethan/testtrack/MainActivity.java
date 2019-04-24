@@ -600,17 +600,20 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                         @Override
                         public void onSuccess(Location location) {
                             if (location != null) {
-                                mLastLocation = location;
-
                                 double latitude = location.getLatitude();
                                 double longitude = location.getLongitude();
                                 float speed = location.getSpeed();
 
-                                String log = "Last Location\n[" + latitude + ", " + longitude + ", " + speed + " m/s" + "\n";
-                                mLocationLog.setText(log);
-                                mSensingModel.setSensingLocation(new GeoPoint(latitude, longitude));
+                                if (mLastLocation == null || (latitude != mLastLocation.getLatitude() && longitude != mLastLocation.getLongitude())) {
+                                    mLastLocation = location;
 
-                                startFetchAddressIntentService();
+                                    String log = "Last Location\n[" + latitude + ", " + longitude + ", " + speed + " m/s]" + "\n";
+                                    mLocationLog.setText(log);
+                                    mSensingModel.setSensingLocation(new GeoPoint(latitude, longitude));
+
+                                    Log.d(TAG, log);
+                                    startFetchAddressIntentService();
+                                }
                             }
                         }
                     });
@@ -631,6 +634,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             }
             String result = resultData.getString(FetchAddressIntentService.RESULT_DATA_KEY);
             mAddressLog.setText(result);
+
+            stopFetchAddressIntentService();
         }
     }
 
@@ -639,6 +644,13 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         intent.putExtra(FetchAddressIntentService.EXTRA_RECEIVER, new AddressResultReceiver(new Handler()));
         intent.putExtra(FetchAddressIntentService.EXTRA_DATA_LOCATION, mLastLocation);
         startService(intent);
+        Log.d(TAG, "start fetch address service.");
+    }
+
+    private void stopFetchAddressIntentService() {
+        Intent intent = new Intent(this, FetchAddressIntentService.class);
+        stopService(intent);
+        Log.d(TAG, "stop fetch address service.");
     }
 
     private void uploadSensingData() {
