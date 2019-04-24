@@ -55,6 +55,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>
         <TextView
+            android:id="@+id/current_magnetic_field"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+        <TextView
+            android:id="@+id/current_proximity"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+        <TextView
+            android:id="@+id/current_environment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"/>
+        <TextView
             android:id="@+id/current_significant_motion"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>

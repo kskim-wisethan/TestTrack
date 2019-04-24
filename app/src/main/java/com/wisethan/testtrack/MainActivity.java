@@ -32,10 +32,13 @@ import android.util.Log;
 import android.view.View;
 
 import com.google.android.material.navigation.NavigationView;
+import com.google.firebase.Timestamp;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.GeoPoint;
 import com.wisethan.testtrack.activity.LoginActivity;
 import com.wisethan.testtrack.activity.ProfileActivity;
+import com.wisethan.testtrack.model.SensingModel;
 import com.wisethan.testtrack.model.StorageFileModel;
 import com.wisethan.testtrack.model.UserModel;
 import com.wisethan.testtrack.service.FetchAddressIntentService;
@@ -59,6 +62,9 @@ import android.widget.TextView;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 
 
@@ -68,7 +74,13 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     long mStartTime = 0;
     long mEndTime = 0;
     long mStepCount = 0;
+    float mTemperature = 0;
+    float mHumidity = 0;
+    float mPressure = 0;
+    float mLight = 0;
+    private float[] mOrientationAngles = new float[3];
     Location mLastLocation;
+    SensingModel mSensingModel = new SensingModel();
 
     private ImageView mProfileImage;
     private TextView mProfileName;
@@ -83,6 +95,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private TextView mSubLog;
     private TextView mLocationLog;
     private TextView mAddressLog;
+    private TextView mMagneticFieldLog;
+    private TextView mProximityLog;
+    private TextView mEnvironmentLog;
     private Switch mTrackingSwitch;
 
     private RequestManager mRequestManager;
@@ -94,6 +109,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     private Sensor mRotationVectorSensor;
     private Sensor mSignificantMotionSensor;
     private Sensor mStepDetectorSensor;
+    private Sensor mMagneticFieldSensor;
+    private Sensor mProximitySensor;
+    private Sensor mTemperatureSensor;
+    private Sensor mHumiditySensor;
+    private Sensor mPressureSensor;
+    private Sensor mLightSensor;
 
     private FusedLocationProviderClient mFusedLocationProviderClient;
     private LocationManager mLocationManager;
@@ -120,8 +141,21 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         fab.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                        .setAction("Action", null).show();
+                long nt = System.nanoTime();
+                long mt = System.currentTimeMillis();
+                String output = String.format("%d ns, %d ms", nt, mt);
+                Log.d(TAG, output);
+
+                Date dt = Calendar.getInstance().getTime();
+                Timestamp tm = Timestamp.now();
+
+                String output2 = tm.toString();
+                String output3 = String.format("%d-%02d-%02d", dt.getYear() + 1900, dt.getMonth() + 1, dt.getDate());
+                Log.d(TAG, output2);
+                Log.d(TAG, output3);
+
+                uploadSensingData();
+                //Snackbar.make(view, output, Snackbar.LENGTH_LONG).setAction("Action", null).show();
             }
         });
 
@@ -142,11 +176,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         mGravityLog = findViewById(R.id.current_gravity);
         mGyroscopeLog = findViewById(R.id.current_gyroscope);
         mRotationVectorLog = findViewById(R.id.current_rotational_vector);
+        mMagneticFieldLog = findViewById(R.id.current_magnetic_field);
+        mProximityLog = findViewById(R.id.current_proximity);
         mSignificantMotionLog = findViewById(R.id.current_significant_motion);
         mStepDetectLog = findViewById(R.id.current_step_detect);
         mSubLog = findViewById(R.id.sub_log);
         mLocationLog = findViewById(R.id.current_location);
         mAddressLog = findViewById(R.id.current_address);
+        mEnvironmentLog = findViewById(R.id.current_environment);
 
         mSensorManager = (SensorManager)getSystemService(Context.SENSOR_SERVICE);
         mAccelerometerSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -156,6 +193,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         mRotationVectorSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
         mSignificantMotionSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION);
         mStepDetectorSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR);
+        mMagneticFieldSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        mProximitySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+        mTemperatureSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE);
+        mHumiditySensor = mSensorManager.getDefaultSensor(Sensor.TYPE_RELATIVE_HUMIDITY);
+        mPressureSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_PRESSURE);
+        mLightSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_LIGHT);
 
         mTrackingSwitch = (Switch) findViewById(R.id.tracking_switch);
         mTrackingSwitch.setOnCheckedChangeListener(new TrackingSwitchClick());
@@ -256,6 +299,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         mSensorManager.registerListener(mSensorEventListener, mGyroscopeSensor, SensorManager.SENSOR_DELAY_UI);
         mSensorManager.registerListener(mSensorEventListener, mRotationVectorSensor, SensorManager.SENSOR_DELAY_UI);
         mSensorManager.registerListener(mSensorEventListener, mStepDetectorSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mMagneticFieldSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mProximitySensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mTemperatureSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mHumiditySensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mPressureSensor, SensorManager.SENSOR_DELAY_UI);
+        mSensorManager.registerListener(mSensorEventListener, mLightSensor, SensorManager.SENSOR_DELAY_UI);
         mSensorManager.requestTriggerSensor(mTriggerEventListener, mSignificantMotionSensor);
         //mStartTime = System.nanoTime();
     }
@@ -265,6 +314,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         mStartTime = 0;
         mEndTime = 0;
         mStepCount = 0;
+        mTemperature = 0;
+        mHumidity = 0;
+        mPressure = 0;
+        mLight = 0;
     }
 
     private final TriggerEventListener mTriggerEventListener = new TriggerEventListener() {
@@ -289,35 +342,121 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 mStartTime = System.nanoTime();
 
                 float value[] = event.values;
-                String log = "Acceleration force\n";
+                String log = "Acceleration force (" + System.currentTimeMillis() + ")\n";
                 log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
                 mAccelerationLog.setText(log);
+
+                ArrayList<Float> data = new ArrayList<Float>();
+                data.add(value[0]);
+                data.add(value[1]);
+                data.add(value[2]);
+                mSensingModel.setAcceleration(data);
+                mSensingModel.setSensingTime(Timestamp.now());
+
+                getLastLocation();
             } else if (type == Sensor.TYPE_LINEAR_ACCELERATION) {
                 float value[] = event.values;
-                String log = "Linear Acceleration\n";
+                String log = "Linear Acceleration (" + System.currentTimeMillis() + ")\n";
                 log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
                 mLinearAccelerationLog.setText(log);
             } else if (type == Sensor.TYPE_GRAVITY) {
                 float value[] = event.values;
-                String log = "Gravity \n";
+                String log = "Gravity (" + System.currentTimeMillis() + ")\n";
                 log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
                 mGravityLog.setText(log);
+
+                ArrayList<Float> data = new ArrayList<Float>();
+                data.add(value[0]);
+                data.add(value[1]);
+                data.add(value[2]);
+                mSensingModel.setGravity(data);
             } else if (type == Sensor.TYPE_GYROSCOPE) {
                 float value[] = event.values;
-                String log = "Gyroscope \n";
+                String log = "Gyroscope (" + System.currentTimeMillis() + ")\n";
                 log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
                 mGyroscopeLog.setText(log);
+
+                ArrayList<Float> data = new ArrayList<Float>();
+                data.add(value[0]);
+                data.add(value[1]);
+                data.add(value[2]);
+                mSensingModel.setGyroscope(data);
+
             } else if (type == Sensor.TYPE_ROTATION_VECTOR) {
                 float value[] = event.values;
-                String log = "Rotation Vector \n";
+                String log = "Rotation Vector (" + System.currentTimeMillis() + ")\n";
                 log += String.format("[%f, %f, %f, %f]\n", value[0], value[1], value[2], value[3]);
                 mRotationVectorLog.setText(log);
+
+                ArrayList<Float> data = new ArrayList<Float>();
+                data.add(value[0]);
+                data.add(value[1]);
+                data.add(value[2]);
+                data.add(value[3]);
+                mSensingModel.setRotationVector(data);
+
             } else if (type == Sensor.TYPE_STEP_DETECTOR) {
                 float value[] = event.values;
                 ++mStepCount;
-                String log = "Step Detector \n";
+                String log = "Step Detector (" + System.currentTimeMillis() + ")\n";
                 log += String.format("[%.0f][%d]\n", value[0], mStepCount);
                 mStepDetectLog.setText(log);
+
+                mSensingModel.setStepCount(value[0]);
+            } else if (type == Sensor.TYPE_MAGNETIC_FIELD) {
+                float value[] = event.values;
+                String log = "Magnetic Field (" + System.currentTimeMillis() + ")\n";
+                log += String.format("[%f, %f, %f]\n", value[0], value[1], value[2]);
+                mMagneticFieldLog.setText(log);
+
+                ArrayList<Float> data = new ArrayList<Float>();
+                data.add(value[0]);
+                data.add(value[1]);
+                data.add(value[2]);
+                mSensingModel.setMagneticField(data);
+
+                // orientation (acceleration + magnetic field)
+                float[] rotationMatrix = new float[9];
+                SensorManager.getRotationMatrix(rotationMatrix, null, mSensingModel.getAccelerationArray(), mSensingModel.getMagneticFieldArray());
+                SensorManager.getOrientation(rotationMatrix, mOrientationAngles);
+                mSensingModel.setOrientation(mOrientationAngles);
+            } else if (type == Sensor.TYPE_PROXIMITY) {
+                float value = event.values[0];
+                String log = "Proximity (" + System.currentTimeMillis() + ")\n";
+                log += String.format("[%f cm]\n", value);
+                mProximityLog.setText(log);
+
+                mSensingModel.setProximity(value);
+            } else if (type == Sensor.TYPE_AMBIENT_TEMPERATURE) {
+                mTemperature = event.values[0];
+                String log = "Environment (" + System.currentTimeMillis() + ")\n";
+                log += String.format("[Temperature: %.0f, Humidity: %.0f, Pressure: %.0f, Light: %.0f]\n", mTemperature, mHumidity, mPressure, mLight);
+                mEnvironmentLog.setText(log);
+
+            } else if (type == Sensor.TYPE_RELATIVE_HUMIDITY) {
+                mHumidity = event.values[0];
+                String log = "Environment (" + System.currentTimeMillis() + ")\n";
+                log += String.format("[Temperature: %.0f, Humidity: %.0f, Pressure: %.0f, Light: %.0f]\n", mTemperature, mHumidity, mPressure, mLight);
+                mEnvironmentLog.setText(log);
+
+            } else if (type == Sensor.TYPE_PRESSURE) {
+                mPressure = event.values[0];
+                String log = "Environment (" + System.currentTimeMillis() + ")\n";
+                log += String.format("[Temperature: %.0f, Humidity: %.0f, Pressure: %.0f, Light: %.0f]\n", mTemperature, mHumidity, mPressure, mLight);
+                mEnvironmentLog.setText(log);
+
+                ArrayList<Float> data = new ArrayList<Float>();
+                data.add(mTemperature);
+                data.add(mHumidity);
+                data.add(mPressure);
+                data.add(mLight);
+                mSensingModel.setEnvironment(data);
+
+            } else if (type == Sensor.TYPE_LIGHT) {
+                mLight = event.values[0];
+                String log = "Environment (" + System.currentTimeMillis() + ")\n";
+                log += String.format("[Temperature: %.0f, Humidity: %.0f, Pressure: %.0f, Light: %.0f]\n", mTemperature, mHumidity, mPressure, mLight);
+                mEnvironmentLog.setText(log);
             }
         }
 
@@ -393,10 +532,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             mProfileName.setText((name == null || name.isEmpty()) ? uid : name);
             mProfileEmail.setText(email);
             getUserProfileInfo(uid);
+
+            mSensingModel.setUserId(uid);
         } else {
             mProfileImage.setImageResource(R.mipmap.ic_launcher_round);
             mProfileName.setText(getString(R.string.nav_header_title));
             mProfileEmail.setText(getString(R.string.nav_header_subtitle));
+
+            mSensingModel.setUserId("");
         }
     }
 
@@ -465,6 +608,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
                                 String log = "Last Location\n[" + latitude + ", " + longitude + ", " + speed + " m/s" + "\n";
                                 mLocationLog.setText(log);
+                                mSensingModel.setSensingLocation(new GeoPoint(latitude, longitude));
 
                                 startFetchAddressIntentService();
                             }
@@ -495,5 +639,14 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         intent.putExtra(FetchAddressIntentService.EXTRA_RECEIVER, new AddressResultReceiver(new Handler()));
         intent.putExtra(FetchAddressIntentService.EXTRA_DATA_LOCATION, mLastLocation);
         startService(intent);
+    }
+
+    private void uploadSensingData() {
+        mRequestManager.requestSetSensingInfo(mSensingModel, new RequestManager.SuccessCallback() {
+            @Override
+            public void onResponse(boolean success) {
+                Log.d(TAG, "sensing data upload success.");
+            }
+        });
     }
 }

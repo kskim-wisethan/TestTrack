@@ -13,11 +13,14 @@ import com.google.firebase.storage.FileDownloadTask;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.UploadTask;
+import com.wisethan.testtrack.model.SensingModel;
 import com.wisethan.testtrack.model.StorageFileModel;
 import com.wisethan.testtrack.model.UserModel;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -90,6 +93,37 @@ public class RequestManager {
                     @Override
                     public void onFailure(@NonNull Exception e) {
                         Log.w(TAG, "Error writing user document", e);
+                        callback.onResponse(false);
+                    }
+                });
+    }
+
+    public void requestSetSensingInfo(SensingModel data, final SuccessCallback callback) {
+        Date dt = Calendar.getInstance().getTime();
+        String ymd = String.format("%d-%02d-%02d", dt.getYear() + 1900, dt.getMonth() + 1, dt.getDate());
+
+        DocumentReference docRef;
+        if (data.getSensingId().isEmpty()) {
+            docRef = mFirestore.collection("sensing").document(data.getUserId()).collection(ymd).document();
+            String docid = docRef.getId();
+            data.setSensingId(docid);
+
+        } else {
+            docRef = mFirestore.collection("models").document(data.getUserId()).collection(ymd).document(data.getSensingId());
+        }
+
+        docRef.set(data.getData())
+                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                    @Override
+                    public void onSuccess(Void aVoid) {
+                        Log.d(TAG, "Sensing data successfully written!");
+                        callback.onResponse(true);
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.w(TAG, "Error writing sensing document", e);
                         callback.onResponse(false);
                     }
                 });
