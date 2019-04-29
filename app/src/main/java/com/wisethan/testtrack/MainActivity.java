@@ -24,7 +24,6 @@ import com.google.android.gms.location.GeofencingClient;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
-import com.google.android.material.snackbar.Snackbar;
 
 import android.os.Handler;
 import android.os.ResultReceiver;
@@ -462,7 +461,6 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
 
         @Override
         public void onAccuracyChanged(Sensor sensor, int accuracy) {
-            // A sensor's accuracy changes
             int type = sensor.getType();
             if (type == Sensor.TYPE_ACCELEROMETER) {
 
