@@ -23,7 +23,6 @@ import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.wisethan.testtrack.activity.LoginActivity;
 import com.wisethan.testtrack.activity.ProfileActivity;
-import com.wisethan.testtrack.model.SensingModel;
 import com.wisethan.testtrack.model.StorageFileModel;
 import com.wisethan.testtrack.model.UserModel;
 import com.wisethan.testtrack.util.PermissionManager;
