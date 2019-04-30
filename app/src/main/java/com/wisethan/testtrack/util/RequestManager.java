@@ -103,14 +103,9 @@ public class RequestManager {
         String ymd = String.format("%d-%02d-%02d", dt.getYear() + 1900, dt.getMonth() + 1, dt.getDate());
 
         DocumentReference docRef;
-        if (data.getSensingId().isEmpty()) {
-            docRef = mFirestore.collection("sensing").document(data.getUserId()).collection(ymd).document();
-            String docid = docRef.getId();
-            data.setSensingId(docid);
-
-        } else {
-            docRef = mFirestore.collection("models").document(data.getUserId()).collection(ymd).document(data.getSensingId());
-        }
+        docRef = mFirestore.collection("sensing").document(data.getUserId()).collection(ymd).document();
+        String docid = docRef.getId();
+        data.setSensingId(docid);
 
         docRef.set(data.getData())
                 .addOnSuccessListener(new OnSuccessListener<Void>() {
